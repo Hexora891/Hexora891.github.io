@@ -9,6 +9,7 @@
 
   <!-- Styles -->
   <link rel="stylesheet" href="assets/css/style.css" />
+  <link rel="stylesheet" href="assets/css/terminal.css" />
 
   <!-- PDF.js (bundle + worker) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -41,6 +42,11 @@
       <img src="assets/images/music.png" alt="Music icon">
       <span>Music</span>
     </button>
+
+    <button class="desktop-icon" onclick="openWindow(event,'terminalWindow')" aria-label="Open Terminal window">
+      <img src="assets/images/windows-terminal.png" alt="Terminal icon">
+      <span>Terminal</span>
+    </button>
   </div>
 
   <!-- About Window -->
@@ -67,9 +73,9 @@
           <div class="about-tagline">★ hack the planet ★</div>
 
           <h2 class="about-section">About Me</h2>
-          <p>Hey, I'm Hexora. Every day I dive deeper into the world of hacking and computing. Most of my time goes into learning, building, and sharpening my skills across different areas of security. I focus a lot on OffSec, and I try to keep the true spirit of hacking alive so I never lose sight of why I started.</p>
+          <p>I’m a cybersecurity enthusiast focused on red teaming and offensive security. I enjoy working with Active Directory, Windows internals, C2 infrastructure, and offensive security tools, with most of my experience coming from hands-on labs, CTFs, and personal projects.</p>
 
-          <p>I’m also my own toughest critic. When I hit burnout, I usually just hack even more—it’s what keeps me going. I enjoy it so much that I can’t stop. Choosing this path has been the best decision of my life, and I’m fully committed to it, all from the comfort of my little workspace.</p>
+          <p>I like understanding how things work under the hood and building things myself rather than just relying on existing tools. I’ve worked on C2 infrastructure, offensive tooling, and red team labs, and I’m continuously improving my skills in offensive development and advanced red team operations.</p>
 
           <h2 class="about-section">Resume</h2>
           <p><a href="#" onclick="openResumeNewTab(); return false;">Check out my resume here.</a></p>
@@ -104,6 +110,26 @@
 
       <!-- PDF viewer -->
       <div id="pdfViewer" class="pdf-viewer"></div>
+    </div>
+  </div>
+
+  <!-- Terminal Window -->
+  <div id="terminalWindow" class="window terminal-window" role="dialog" aria-labelledby="terminalWindow-title" aria-hidden="true">
+    <div class="window-header" role="banner">
+      <span id="terminalWindow-title">Terminal</span>
+      <div class="window-controls" role="toolbar">
+        <button onclick="minimizeWindow('terminalWindow')" aria-label="Minimize window">_</button>
+        <button onclick="maximizeWindow('terminalWindow')" aria-label="Maximize window">▢</button>
+        <button onclick="closeWindow('terminalWindow')" aria-label="Close window">X</button>
+      </div>
+    </div>
+
+    <div class="terminal">
+      <div id="terminalOutput" class="terminal-output" aria-live="polite"></div>
+      <div id="terminalInputLine" class="terminal-input-line">
+        <span class="terminal-prompt">ayush@workstation:~$</span>
+        <input id="terminalInput" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Terminal input">
+      </div>
     </div>
   </div>
 
@@ -177,5 +203,6 @@
   </div>
 
   <script src="assets/js/script.js" defer></script>
+  <script src="assets/js/terminal.js" defer></script>
 </body>
 </html>

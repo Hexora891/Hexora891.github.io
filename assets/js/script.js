@@ -8,6 +8,7 @@ if (typeof window !== 'undefined') {
     window.nextTrack = window.nextTrack || function() { console.warn('nextTrack called before script loaded'); };
     window.previousTrack = window.previousTrack || function() { console.warn('previousTrack called before script loaded'); };
     window.selectTrack = window.selectTrack || function() { console.warn('selectTrack called before script loaded'); };
+    window.initTerminal = window.initTerminal || function() { console.warn('initTerminal called before script loaded'); };
 }
 
 /* ======================================================
@@ -99,6 +100,11 @@ function openWindow(event, id) {
     if (id === 'musicWindow') {
         try { initializeMusicPlayer(); } catch (e) { /* ignore */ }
     }
+
+    // If opening terminal, boot it and focus the input
+    if (id === 'terminalWindow') {
+        setTimeout(initTerminal, 50);
+    }
 }
 
 function closeWindow(id) {
@@ -179,6 +185,7 @@ function addTaskbarButton(id) {
             bringToFront(win);
             removeTaskbarButton(id);
             if (id === 'resumeWindow') setTimeout(loadResumePDF, 120);
+            if (id === 'terminalWindow') setTimeout(initTerminal, 50);
         } else {
             minimizeWindow(id);
         }
