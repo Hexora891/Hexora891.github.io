@@ -9,7 +9,6 @@
 
   <!-- Styles -->
   <link rel="stylesheet" href="assets/css/style.css" />
-  <link rel="stylesheet" href="assets/css/terminal.css" />
 
   <!-- PDF.js (bundle + worker) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -41,11 +40,6 @@
     <button class="desktop-icon" onclick="openWindow(event,'musicWindow')" aria-label="Open Music window">
       <img src="assets/images/music.png" alt="Music icon">
       <span>Music</span>
-    </button>
-
-    <button class="desktop-icon" onclick="openWindow(event,'terminalWindow')" aria-label="Open Terminal window">
-      <img src="assets/images/windows-terminal.png" alt="Terminal icon">
-      <span>Terminal</span>
     </button>
   </div>
 
@@ -113,26 +107,6 @@
     </div>
   </div>
 
-  <!-- Terminal Window -->
-  <div id="terminalWindow" class="window terminal-window" role="dialog" aria-labelledby="terminalWindow-title" aria-hidden="true">
-    <div class="window-header" role="banner">
-      <span id="terminalWindow-title">Terminal</span>
-      <div class="window-controls" role="toolbar">
-        <button onclick="minimizeWindow('terminalWindow')" aria-label="Minimize window">_</button>
-        <button onclick="maximizeWindow('terminalWindow')" aria-label="Maximize window">▢</button>
-        <button onclick="closeWindow('terminalWindow')" aria-label="Close window">X</button>
-      </div>
-    </div>
-
-    <div class="terminal">
-      <div id="terminalOutput" class="terminal-output" aria-live="polite"></div>
-      <div id="terminalInputLine" class="terminal-input-line">
-        <span class="terminal-prompt">ayush@workstation:~$</span>
-        <input id="terminalInput" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Terminal input">
-      </div>
-    </div>
-  </div>
-
   <!-- Taskbar -->
   <nav id="taskbar">
     <button id="startButton" onclick="toggleStartMenu()">
@@ -181,7 +155,7 @@
     <div class="window-content music-content">
       <div class="music-xp-main">
         <div class="music-xp-album-frame">
-          <img id="albumArt" src="/assets/image/song1.gif" class="music-xp-album-art">
+          <img id="albumArt" src="assets/images/song1.gif" alt="Album art" class="music-xp-album-art">
         </div>
 
         <div class="music-xp-controls">
@@ -203,6 +177,5 @@
   </div>
 
   <script src="assets/js/script.js" defer></script>
-  <script src="assets/js/terminal.js" defer></script>
 </body>
 </html>

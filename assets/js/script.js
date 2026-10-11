@@ -1,191 +1,207 @@
-/* ======================================================
-   0) Defensive stubs (no-op globals for inline calls)
-   Keeps inline onclicks safe before full init.
-====================================================== */
-if (typeof window !== 'undefined') {
-    window.initializeMusicPlayer = window.initializeMusicPlayer || function() { console.warn('initializeMusicPlayer called before script loaded'); };
-    window.togglePlayPause = window.togglePlayPause || function() { console.warn('togglePlayPause called before script loaded'); };
-    window.nextTrack = window.nextTrack || function() { console.warn('nextTrack called before script loaded'); };
-    window.previousTrack = window.previousTrack || function() { console.warn('previousTrack called before script loaded'); };
-    window.selectTrack = window.selectTrack || function() { console.warn('selectTrack called before script loaded'); };
-    window.initTerminal = window.initTerminal || function() { console.warn('initTerminal called before script loaded'); };
+/* ==========================================================
+   Hexora89 — Windows XP-style desktop
+   ----------------------------------------------------------
+   The desktop "shell": window management, taskbar, start menu,
+   the PDF resume viewer and a small XP-style music player.
+
+   File layout:
+     1.  Shared state
+     2.  Desktop icons
+     3.  Window positioning
+     4.  Start menu
+     5.  Window controls (open / close / minimize / maximize)
+     6.  Taskbar
+     7.  Window dragging
+     8.  PDF resume viewer
+     9.  Resume actions
+     10. Music player
+     11. Keyboard support
+     12. Boot
+   ========================================================== */
+
+/* ==========================================================
+   1. Shared state
+   ========================================================== */
+let zIndexCounter = 10;       // stacking depth of the most recently focused window
+let nextCascadeLeft = null;   // where the next opened window is placed...
+let nextCascadeTop = null;    // ...before each new window steps down/right
+const CASCADE_STEP_PX = 24;   // offset applied per newly opened window
+const TASKBAR_HEIGHT = 30;    // keep in sync with #taskbar height in style.css
+
+/* ==========================================================
+   2. Desktop icons
+   ========================================================== */
+
+/* Enlarge the icon whose window is being opened (visual feedback). */
+function highlightDesktopIcon(event) {
+    document.querySelectorAll('.desktop-icon').forEach(icon => icon.classList.remove('desktop-icon-large'));
+    if (event && event.currentTarget) event.currentTarget.classList.add('desktop-icon-large');
 }
 
-/* ======================================================
-   1) GLOBALS
-====================================================== */
-let zIndexCounter = 10;
-let nextCascadeLeft = null;
-let nextCascadeTop = null;
-const CASCADE_STEP_PX = 24;
+/* ==========================================================
+   3. Window positioning
+   ========================================================== */
 
-/* ======================================================
-   2) WINDOW POSITIONING (desktop-only cascade)
-====================================================== */
+/* Place a window in a cascading pattern, wrapping back toward the
+   centre whenever it would overflow the right or bottom edge. */
 function positionWindowWithCascade(win) {
-    const taskbarHeight = 30;
-    const wasHidden = win.style.display === "none" || getComputedStyle(win).display === "none";
-    if (wasHidden) win.style.display = "block"; // measureable
+    const wasHidden = win.style.display === 'none' || getComputedStyle(win).display === 'none';
+    if (wasHidden) win.style.display = 'block'; // must be visible to be measurable
+
     const width = win.offsetWidth || 900;
     const height = win.offsetHeight || 700;
 
     if (nextCascadeLeft === null || nextCascadeTop === null) {
-        const centeredLeft = Math.max(0, Math.floor((window.innerWidth - width) / 2) - 60);
-        const centeredTop = Math.max(0, Math.floor((window.innerHeight - height - taskbarHeight) / 2));
-        nextCascadeLeft = centeredLeft;
-        nextCascadeTop = centeredTop;
+        // first window: start centred, slightly left of centre
+        nextCascadeLeft = Math.max(0, Math.floor((window.innerWidth - width) / 2) - 60);
+        nextCascadeTop = Math.max(0, Math.floor((window.innerHeight - height - TASKBAR_HEIGHT) / 2));
     } else {
+        // subsequent windows: step down and to the right
         nextCascadeLeft += CASCADE_STEP_PX;
         nextCascadeTop += CASCADE_STEP_PX;
     }
 
+    // wrap back to the centred start when we run off-screen
     if (nextCascadeLeft + width > window.innerWidth - 10) {
         nextCascadeLeft = Math.max(0, Math.floor((window.innerWidth - width) / 2) - 60);
     }
-    if (nextCascadeTop + height > window.innerHeight - taskbarHeight) {
-        nextCascadeTop = Math.max(0, Math.floor((window.innerHeight - height - taskbarHeight) / 2));
+    if (nextCascadeTop + height > window.innerHeight - TASKBAR_HEIGHT) {
+        nextCascadeTop = Math.max(0, Math.floor((window.innerHeight - height - TASKBAR_HEIGHT) / 2));
     }
 
     win.style.left = nextCascadeLeft + 'px';
     win.style.top = nextCascadeTop + 'px';
 }
 
-/* ======================================================
-   3) START MENU
-====================================================== */
+/* ==========================================================
+   4. Start menu
+   ========================================================== */
 function toggleStartMenu() {
-    const menu = document.getElementById("startMenu");
-    const button = document.getElementById("startButton");
-    const isVisible = menu.style.display === "block";
-    menu.style.display = isVisible ? "none" : "block";
+    const menu = document.getElementById('startMenu');
+    const button = document.getElementById('startButton');
+    const isVisible = menu.style.display === 'block';
+    menu.style.display = isVisible ? 'none' : 'block';
     menu.setAttribute('aria-hidden', isVisible ? 'true' : 'false');
     button.setAttribute('aria-expanded', isVisible ? 'false' : 'true');
 }
 
-// Close start menu when clicking outside (desktop)
+/* Clicking anywhere outside the menu (or the Start button) closes it. */
 document.addEventListener('click', (e) => {
-    const menu = document.getElementById("startMenu");
-    const button = document.getElementById("startButton");
+    const menu = document.getElementById('startMenu');
+    const button = document.getElementById('startButton');
     if (!menu.contains(e.target) && !button.contains(e.target)) {
         menu.style.display = 'none';
     }
 });
 
-/* ======================================================
-   4) WINDOW CONTROLS (open / close / minimize / maximize)
-====================================================== */
+/* ==========================================================
+   5. Window controls
+   ========================================================== */
+
+/* Open a window: show it, cascade-position it, raise it, then run
+   any per-app lazy initialisation. */
 function openWindow(event, id) {
-    // desktop-icon visual
-    document.querySelectorAll('.desktop-icon').forEach(icon => icon.classList.remove('desktop-icon-large'));
-    if (event && event.currentTarget) event.currentTarget.classList.add('desktop-icon-large');
+    highlightDesktopIcon(event);
 
     const win = document.getElementById(id);
     if (!win) return;
 
-    win.style.display = "block";
+    win.style.display = 'block';
     win.setAttribute('aria-hidden', 'false');
 
     positionWindowWithCascade(win);
     bringToFront(win);
 
-    // Remove existing taskbar button (we don't persist duplicates)
+    // windows are not kept in the taskbar while they are open
     removeTaskbarButton(id);
 
-    // If opening resume, load PDF
-    if (id === 'resumeWindow') {
-        setTimeout(loadResumePDF, 200);
-    }
-
-    // If opening music window, ensure player initialized
-    if (id === 'musicWindow') {
-        try { initializeMusicPlayer(); } catch (e) { /* ignore */ }
-    }
-
-    // If opening terminal, boot it and focus the input
-    if (id === 'terminalWindow') {
-        setTimeout(initTerminal, 50);
-    }
+    // app-specific lazy init
+    if (id === 'resumeWindow') setTimeout(loadResumePDF, 200);
+    if (id === 'musicWindow') initializeMusicPlayer();
 }
 
 function closeWindow(id) {
     const win = document.getElementById(id);
     if (!win) return;
-    win.style.display = "none";
+    win.style.display = 'none';
     win.setAttribute('aria-hidden', 'true');
     removeTaskbarButton(id);
 
-    if (id === 'musicWindow') {
-        stopAllMusic();
-    }
+    // stop audio when the music window is closed
+    if (id === 'musicWindow') stopAllMusic();
 }
 
+/* Hide the window but keep a taskbar button so it can be restored. */
 function minimizeWindow(id) {
     const win = document.getElementById(id);
     if (!win) return;
-    win.style.display = "none";
+    win.style.display = 'none';
     win.setAttribute('aria-hidden', 'true');
     addTaskbarButton(id);
 }
 
+/* Toggle between the remembered geometry and a fullscreen fit. */
 function maximizeWindow(id) {
     const win = document.getElementById(id);
     if (!win) return;
 
-    if (win.dataset.maximized === "true") {
-        // restore
-        win.style.width = win.dataset.prevWidth || "900px";
-        win.style.height = win.dataset.prevHeight || "700px";
-        win.style.top = win.dataset.prevTop || "40px";
-        win.style.left = win.dataset.prevLeft || "40px";
-        win.dataset.maximized = "false";
+    if (win.dataset.maximized === 'true') {
+        // restore the geometry saved before maximizing
+        win.style.width = win.dataset.prevWidth || '900px';
+        win.style.height = win.dataset.prevHeight || '700px';
+        win.style.top = win.dataset.prevTop || '40px';
+        win.style.left = win.dataset.prevLeft || '40px';
+        win.dataset.maximized = 'false';
     } else {
-        // save
-        win.dataset.prevWidth = win.style.width || "900px";
-        win.dataset.prevHeight = win.style.height || "700px";
-        win.dataset.prevTop = win.style.top || "40px";
-        win.dataset.prevLeft = win.style.left || "40px";
+        // remember the current geometry, then fill the screen
+        win.dataset.prevWidth = win.style.width || '900px';
+        win.dataset.prevHeight = win.style.height || '700px';
+        win.dataset.prevTop = win.style.top || '40px';
+        win.dataset.prevLeft = win.style.left || '40px';
 
-        // maximize
-        win.style.left = "0";
-        win.style.top = "0";
-        win.style.width = "100%";
-        win.style.height = "calc(100% - 30px)";
-        win.dataset.maximized = "true";
+        win.style.left = '0';
+        win.style.top = '0';
+        win.style.width = '100%';
+        win.style.height = `calc(100% - ${TASKBAR_HEIGHT}px)`;
+        win.dataset.maximized = 'true';
     }
 
-    if (id === 'resumeWindow') {
-        setTimeout(loadResumePDF, 120);
-    }
+    // the resume viewer needs a re-render at the new size
+    if (id === 'resumeWindow') setTimeout(loadResumePDF, 120);
 }
 
-/* Bring window to front */
+/* Raise a window above all others. */
 function bringToFront(win) {
     zIndexCounter++;
     win.style.zIndex = zIndexCounter;
 }
 
-/* ======================================================
-   5) TASKBAR MANAGEMENT
-====================================================== */
+/* ==========================================================
+   6. Taskbar
+   ========================================================== */
+
+/* Add a taskbar button for a minimized window (ignored if present). */
 function addTaskbarButton(id) {
-    const taskbarWindows = document.getElementById("taskbar-windows");
+    const taskbarWindows = document.getElementById('taskbar-windows');
     if (!taskbarWindows) return;
-    if (document.getElementById("task-" + id)) return;
+    if (document.getElementById('task-' + id)) return;
 
-    const btn = document.createElement("button");
-    btn.id = "task-" + id;
+    const btn = document.createElement('button');
+    btn.id = 'task-' + id;
+
+    // label it with the window's title bar text
     const headerTitle = document.querySelector(`#${id} .window-header span`);
-    btn.innerText = headerTitle ? headerTitle.innerText : id.replace("Window", "");
+    btn.innerText = headerTitle ? headerTitle.innerText : id.replace('Window', '');
 
+    // clicking restores the window, or minimizes it again if already open
     btn.onclick = () => {
         const win = document.getElementById(id);
         if (!win) return;
-        if (win.style.display === "none" || win.style.display === "") {
-            win.style.display = "block";
+        if (win.style.display === 'none' || win.style.display === '') {
+            win.style.display = 'block';
             bringToFront(win);
             removeTaskbarButton(id);
             if (id === 'resumeWindow') setTimeout(loadResumePDF, 120);
-            if (id === 'terminalWindow') setTimeout(initTerminal, 50);
         } else {
             minimizeWindow(id);
         }
@@ -195,70 +211,72 @@ function addTaskbarButton(id) {
 }
 
 function removeTaskbarButton(id) {
-    const btn = document.getElementById("task-" + id);
+    const btn = document.getElementById('task-' + id);
     if (btn) btn.remove();
 
-    // remove desktop-icon-large
+    // also clear the enlarged-icon state for that desktop icon
     const desktopIcon = document.querySelector(`.desktop-icon[onclick*='${id}']`);
     if (desktopIcon) desktopIcon.classList.remove('desktop-icon-large');
 }
 
-/* ======================================================
-   6) DRAGGING (desktop mouse-only)
-   - no touch handlers, desktop only
-====================================================== */
+/* ==========================================================
+   7. Window dragging (mouse only — desktop experience)
+   ========================================================== */
 document.querySelectorAll('.window-header').forEach(header => {
     let dragged = null;
+
     header.addEventListener('mousedown', (e) => {
-        // ignore if maximize or close clicked
-        if (e.target.tagName === 'BUTTON') return;
+        if (e.target.tagName === 'BUTTON') return; // let the window controls work
+
         dragged = header.parentElement;
         bringToFront(dragged);
+
         const offsetX = e.clientX - dragged.offsetLeft;
         const offsetY = e.clientY - dragged.offsetTop;
 
-        function moveHandler(e) {
+        function onMove(e) {
+            // clamp so the window stays within the viewport / above the taskbar
             const newLeft = Math.min(window.innerWidth - dragged.offsetWidth, Math.max(0, e.clientX - offsetX));
-            const newTop = Math.min(window.innerHeight - dragged.offsetHeight - 30, Math.max(0, e.clientY - offsetY));
+            const newTop = Math.min(window.innerHeight - dragged.offsetHeight - TASKBAR_HEIGHT, Math.max(0, e.clientY - offsetY));
             dragged.style.left = newLeft + 'px';
             dragged.style.top = newTop + 'px';
         }
 
-        function upHandler() {
-            document.removeEventListener('mousemove', moveHandler);
-            document.removeEventListener('mouseup', upHandler);
+        function onUp() {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
             dragged = null;
         }
 
-        document.addEventListener('mousemove', moveHandler);
-        document.addEventListener('mouseup', upHandler);
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
     });
 });
 
-/* ======================================================
-   7) PDF VIEWER (MULTI-PAGE, NO CONTROLS)
-   - Desktop-only viewer: fetch arrayBuffer -> render all pages
-   - Uses path: /assets/files/Ayush-Resume.pdf (as provided)
-====================================================== */
+/* ==========================================================
+   8. PDF resume viewer
+   Renders every page of the resume onto canvases so it works
+   without any native browser PDF plugin.
+   ========================================================== */
 
-/* Ensure pdf.worker is set if pdfjsLib is present */
+const RESUME_URL = 'assets/files/Ayush-Resume.pdf';
+
+/* Point PDF.js at its worker as soon as the library is available. */
 if (typeof pdfjsLib !== 'undefined') {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 }
 
-let PDF_DOC = null;
+let PDF_DOC = null; // cached document, reused when re-rendering on resize
 
+/* Fetch the PDF and render it into #pdfViewer. */
 function loadResumePDF() {
     const pdfViewer = document.getElementById('pdfViewer');
     if (!pdfViewer) return;
 
-    const url = '/assets/files/Ayush-Resume.pdf';
-
-    // Clear any previous content
     pdfViewer.innerHTML = '<div style="color:#fff;padding:20px;text-align:center;">Loading PDF...</div>';
 
-    // Fetch as arrayBuffer to avoid browser embedding
-    fetch(url, { cache: 'no-cache' })
+    // fetch as an arrayBuffer so the browser never tries to embed it
+    fetch(RESUME_URL, { cache: 'no-cache' })
         .then(response => {
             if (!response.ok) throw new Error('Network response was not ok: ' + response.status);
             return response.arrayBuffer();
@@ -266,43 +284,8 @@ function loadResumePDF() {
         .then(arrayBuffer => pdfjsLib.getDocument({ data: arrayBuffer }).promise)
         .then(pdf => {
             PDF_DOC = pdf;
-            // clear loading
             pdfViewer.innerHTML = '';
-
-            // render pages sequentially
-            const renderAll = async () => {
-                for (let i = 1; i <= pdf.numPages; i++) {
-                    const page = await pdf.getPage(i);
-                    const viewport = page.getViewport({ scale: 1 });
-
-                    // determine scale to fit viewer width (leave some padding)
-                    const maxWidth = Math.max(600, pdfViewer.clientWidth - 20);
-                    const scale = maxWidth / viewport.width;
-                    const scaledViewport = page.getViewport({ scale });
-
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-
-                    const outputScale = window.devicePixelRatio || 1;
-                    canvas.width = Math.floor(scaledViewport.width * outputScale);
-                    canvas.height = Math.floor(scaledViewport.height * outputScale);
-                    canvas.style.width = Math.floor(scaledViewport.width) + 'px';
-                    canvas.style.height = Math.floor(scaledViewport.height) + 'px';
-                    canvas.style.display = 'block';
-                    canvas.style.margin = '10px auto';
-                    canvas.style.background = '#fff';
-                    canvas.style.boxShadow = '0 2px 8px rgba(0,0,0,.35)';
-
-                    // high DPI
-                    ctx.setTransform(outputScale, 0, 0, outputScale, 0, 0);
-
-                    pdfViewer.appendChild(canvas);
-
-                    await page.render({ canvasContext: ctx, viewport: scaledViewport }).promise;
-                }
-            };
-
-            renderAll();
+            renderAllPages(pdf, pdfViewer);
         })
         .catch(err => {
             console.error('PDF load error:', err);
@@ -313,7 +296,38 @@ function loadResumePDF() {
         });
 }
 
-/* Re-render PDF on window resize with debounce */
+/* Render every page sequentially, scaled to fit the viewer width. */
+async function renderAllPages(pdf, pdfViewer) {
+    for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const baseViewport = page.getViewport({ scale: 1 });
+
+        // scale so the page fills the viewer (with a little padding)
+        const maxWidth = Math.max(600, pdfViewer.clientWidth - 20);
+        const viewport = page.getViewport({ scale: maxWidth / baseViewport.width });
+
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const outputScale = window.devicePixelRatio || 1;
+
+        // render at device pixel ratio for crisp text on HiDPI screens
+        canvas.width = Math.floor(viewport.width * outputScale);
+        canvas.height = Math.floor(viewport.height * outputScale);
+        canvas.style.width = Math.floor(viewport.width) + 'px';
+        canvas.style.height = Math.floor(viewport.height) + 'px';
+        canvas.style.display = 'block';
+        canvas.style.margin = '10px auto';
+        canvas.style.background = '#fff';
+        canvas.style.boxShadow = '0 2px 8px rgba(0,0,0,.35)';
+
+        ctx.setTransform(outputScale, 0, 0, outputScale, 0, 0);
+
+        pdfViewer.appendChild(canvas);
+        await page.render({ canvasContext: ctx, viewport }).promise;
+    }
+}
+
+/* Re-render (debounced) on resize while the resume window is open. */
 let _pdfResizeTimer = null;
 window.addEventListener('resize', () => {
     const resumeWin = document.getElementById('resumeWindow');
@@ -323,13 +337,12 @@ window.addEventListener('resize', () => {
     }
 });
 
-/* ======================================================
-   8) RESUME ACTIONS (download / open)
-====================================================== */
+/* ==========================================================
+   9. Resume actions
+   ========================================================== */
 function downloadResume() {
-    const url = '/assets/files/Ayush-Resume.pdf';
     const a = document.createElement('a');
-    a.href = url;
+    a.href = RESUME_URL;
     a.download = 'Ayush-Resume.pdf';
     document.body.appendChild(a);
     a.click();
@@ -337,23 +350,25 @@ function downloadResume() {
 }
 
 function openResumeNewTab() {
-    window.open('/assets/files/Ayush-Resume.pdf', '_blank');
+    window.open(RESUME_URL, '_blank');
 }
 
-// ===== Simple music player (safe wiring after DOM ready) =====
+/* ==========================================================
+   10. Music player (XP style)
+   ========================================================== */
 
-if (typeof reportPlayerStatus === 'undefined') {
-    window.reportPlayerStatus = function(status, data) {
-        console.log('Music Player Status:', status, data || '');
-    };
+const TRACKS = [
+    { title: 'Rick Roll',       artist: 'Rick',     src: 'assets/music/song1.mp3', albumArt: 'assets/images/song1.gif' },
+    { title: 'Song for Denise', artist: 'Artist 1', src: 'assets/music/song2.mp3', albumArt: 'assets/images/song2.png' },
+];
+
+/* Simple status logger, handy when debugging playback on devices. */
+function reportPlayerStatus(status, data) {
+    console.log('Music Player Status:', status, data || '');
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    const tracks = [
-        { title: 'Rick Roll', artist: 'Rick', src: 'assets/music/song1.mp3', albumArt: 'assets/images/song1.gif' },
-        { title: 'Song for Denise', artist: 'Artist 1', src: 'assets/music/song2.mp3', albumArt: 'assets/images/song2.png' },
-    ];
-
+/* Wire up all player controls. Called once on boot. */
+function setupMusicPlayer() {
     const audioEl = document.getElementById('audioPlayer');
     const playBtn = document.getElementById('playPauseBtn');
     const prevBtn = document.getElementById('prevBtn');
@@ -368,115 +383,105 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
-    let current = 0;
-    let playing = false;
+    let current = 0; // index of the active track
 
-    function formatTimeLocal(seconds) {
+    const formatTime = (seconds) => {
         const m = Math.floor(seconds / 60) || 0;
         const s = Math.floor(seconds % 60) || 0;
         return `${m}:${s < 10 ? '0' : ''}${s}`;
-    }
+    };
 
-    function loadTrackLocal(idx) {
-        if (idx < 0) idx = tracks.length - 1;
-        if (idx >= tracks.length) idx = 0;
+    const setPlayingUI = (isPlaying) => {
+        if (playBtn) playBtn.textContent = isPlaying ? '▌▌' : '▶';
+    };
+
+    /* Load a track by index, wrapping around at both ends. */
+    const loadTrack = (idx) => {
+        if (idx < 0) idx = TRACKS.length - 1;
+        if (idx >= TRACKS.length) idx = 0;
         current = idx;
-        const t = tracks[current];
-        audioEl.src = t.src;
-        if (albumArtEl) albumArtEl.src = t.albumArt || '';
+
+        const track = TRACKS[current];
+        audioEl.src = track.src;
+        if (albumArtEl) albumArtEl.src = track.albumArt || '';
         if (progressBar) { progressBar.value = 0; progressBar.max = 0; }
         if (currentTimeEl) currentTimeEl.textContent = '0:00';
         if (totalTimeEl) totalTimeEl.textContent = '0:00';
-        // update metadata once loaded
+
+        // fill in the duration once the browser has read the metadata
         audioEl.addEventListener('loadedmetadata', function onMeta() {
-            if (totalTimeEl) totalTimeEl.textContent = formatTimeLocal(audioEl.duration);
+            if (totalTimeEl) totalTimeEl.textContent = formatTime(audioEl.duration);
             if (progressBar) progressBar.max = Math.floor(audioEl.duration || 0);
             audioEl.removeEventListener('loadedmetadata', onMeta);
         });
-    }
+    };
 
-    function playPauseLocal() {
-        if (!audioEl.src) loadTrackLocal(current);
-        const p = audioEl.paused ? audioEl.play() : audioEl.pause();
-        if (p && p.then) {
-            p.then(() => {
-                playing = !audioEl.paused;
-                if (playBtn) playBtn.textContent = playing ? '▌▌' : '▶';
-            }).catch(err => {
-                console.warn('play() rejected', err);
-            });
-        } else {
-            playing = !audioEl.paused;
-            if (playBtn) playBtn.textContent = playing ? '▌▌' : '▶';
-        }
-    }
-
-    function startPlaybackAfterLoad() {
-        // Attempt to play and update UI/state
+    /* Attempt playback, handling promise rejection (autoplay policies). */
+    const tryPlay = () => {
         try {
             const p = audioEl.play();
             if (p && p.then) {
-                p.then(() => {
-                    playing = true;
-                    if (playBtn) playBtn.textContent = '▌▌';
-                }).catch(err => {
-                    // Autoplay blocked or other error
-                    playing = false;
-                    if (playBtn) playBtn.textContent = '▶';
-                    console.warn('play() rejected after track change', err);
-                });
+                p.then(() => setPlayingUI(true))
+                 .catch(err => { setPlayingUI(false); console.warn('play() rejected', err); });
             } else {
-                playing = !audioEl.paused;
-                if (playBtn) playBtn.textContent = playing ? '▌▌' : '▶';
+                setPlayingUI(!audioEl.paused);
             }
         } catch (e) {
-            console.warn('Error attempting play after load', e);
+            console.warn('Error attempting play', e);
         }
-    }
+    };
 
-    function nextLocal() { loadTrackLocal(current + 1); startPlaybackAfterLoad(); }
-    function prevLocal() { loadTrackLocal(current - 1); startPlaybackAfterLoad(); }
+    const togglePlay = () => {
+        if (!audioEl.src) loadTrack(current);
+        if (audioEl.paused) {
+            tryPlay();
+        } else {
+            audioEl.pause();
+            setPlayingUI(false);
+        }
+    };
 
-    // Expose to window so other UI can call
-    try { 
-        window.nextTrack = nextLocal; 
-        window.previousTrack = prevLocal; 
-        window.togglePlayPause = playPauseLocal; 
-        window.selectTrack = loadTrackLocal; 
-    } catch (e) {}
+    const nextTrack = () => { loadTrack(current + 1); tryPlay(); };
+    const prevTrack = () => { loadTrack(current - 1); tryPlay(); };
 
-    // Attach listeners
-    if (playBtn) playBtn.addEventListener('click', playPauseLocal);
-    if (nextBtn) nextBtn.addEventListener('click', () => { nextLocal(); reportPlayerStatus('user-click-next'); });
-    if (prevBtn) prevBtn.addEventListener('click', () => { prevLocal(); reportPlayerStatus('user-click-prev'); });
-    if (progressBar) progressBar.addEventListener('input', () => { 
-        audioEl.currentTime = Number(progressBar.value); 
-        if (currentTimeEl) currentTimeEl.textContent = formatTimeLocal(audioEl.currentTime); 
+    // expose controls so the desktop shell can drive them too
+    window.togglePlayPause = togglePlay;
+    window.nextTrack = nextTrack;
+    window.previousTrack = prevTrack;
+
+    // button listeners
+    if (playBtn) playBtn.addEventListener('click', togglePlay);
+    if (nextBtn) nextBtn.addEventListener('click', () => { nextTrack(); reportPlayerStatus('user-click-next'); });
+    if (prevBtn) prevBtn.addEventListener('click', () => { prevTrack(); reportPlayerStatus('user-click-prev'); });
+
+    // seek bar
+    if (progressBar) progressBar.addEventListener('input', () => {
+        audioEl.currentTime = Number(progressBar.value);
+        if (currentTimeEl) currentTimeEl.textContent = formatTime(audioEl.currentTime);
     });
-    audioEl.addEventListener('timeupdate', () => { 
-        if (currentTimeEl) currentTimeEl.textContent = formatTimeLocal(audioEl.currentTime); 
-        if (progressBar) progressBar.value = Math.floor(audioEl.currentTime); 
+
+    // keep the UI in sync with playback, auto-advance when a track ends
+    audioEl.addEventListener('timeupdate', () => {
+        if (currentTimeEl) currentTimeEl.textContent = formatTime(audioEl.currentTime);
+        if (progressBar) progressBar.value = Math.floor(audioEl.currentTime);
     });
-    audioEl.addEventListener('ended', nextLocal);
-    
-    // Start with first track selected
-    loadTrackLocal(0);
+    audioEl.addEventListener('ended', nextTrack);
+
+    // start with the first track selected
+    loadTrack(0);
     reportPlayerStatus('simple-player-initialized');
-    
-    // Attempt autoplay after a short delay to ensure track is loaded
-    setTimeout(attemptAutoPlay, 100);
-});
-    
-// Autoplay support: try to start playback when the music window opens
-const MUSIC_AUTOPLAY = true;
+}
+
+/* Best-effort autoplay — triggered when the music window opens. */
+function initializeMusicPlayer() {
+    setTimeout(attemptAutoPlay, 150);
+}
 
 function attemptAutoPlay() {
-    if (!MUSIC_AUTOPLAY) return;
     const audioEl = document.getElementById('audioPlayer');
     const playBtn = document.getElementById('playPauseBtn');
     if (!audioEl) return;
 
-    // If audio already has source and is paused, try to play
     if (audioEl.src) {
         const p = audioEl.play();
         if (p && p.then) {
@@ -489,53 +494,29 @@ function attemptAutoPlay() {
             });
         }
     } else {
-        // if no source yet, select first track and try (no UI overlay)
-        const select = window.selectTrack || function(){};
-        try { select(0); } catch (e) {}
-        setTimeout(() => attemptAutoPlay(), 200);
+        // no source yet — retry shortly (the first track loads on boot)
+        setTimeout(attemptAutoPlay, 200);
     }
 }
 
-// Initialize music player (called when music window opens)
-function initializeMusicPlayer() {
-    // Trigger autoplay when window is opened
-    setTimeout(attemptAutoPlay, 150);
-}
-
-// Stop any music playback (pauses audio, stops demo progress, resets UI)
+/* Pause playback and reset the UI (used when the window is closed). */
 function stopAllMusic() {
-    try {
-        // Stop musicPlayer current audio if present
-        if (window.musicPlayer) {
-            if (musicPlayer.currentAudio && typeof musicPlayer.currentAudio.pause === 'function') {
-                try { musicPlayer.currentAudio.pause(); } catch (e) {}
-            }
-            musicPlayer.isPlaying = false;
-        }
-
-        // Stop demo progress if running
-        try { stopDemoProgress(); } catch (e) {}
-
-        // Pause any <audio id="audioPlayer"> element
-        const audioEl = document.getElementById('audioPlayer');
-        if (audioEl && typeof audioEl.pause === 'function') {
-            try { audioEl.pause(); audioEl.currentTime = 0; } catch (e) {}
-        }
-
-        // Update play button UI
-        const playBtn = document.getElementById('playPauseBtn');
-        if (playBtn) playBtn.textContent = '▶';
-    } catch (e) {
-        console.warn('Error stopping music', e);
+    const audioEl = document.getElementById('audioPlayer');
+    if (audioEl) {
+        audioEl.pause();
+        audioEl.currentTime = 0;
     }
+    const playBtn = document.getElementById('playPauseBtn');
+    if (playBtn) playBtn.textContent = '▶';
 }
 
-/* ======================================================
-   10) KEYBOARD SUPPORT (desktop)
-====================================================== */
+/* ==========================================================
+   11. Keyboard support
+   ========================================================== */
 function addKeyboardSupport() {
+    // Enter / Space activates the focused desktop icon
     document.querySelectorAll('.desktop-icon').forEach(icon => {
-        icon.addEventListener('keydown', function(e) {
+        icon.addEventListener('keydown', function (e) {
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
                 this.click();
@@ -543,20 +524,25 @@ function addKeyboardSupport() {
         });
     });
 
-    document.addEventListener('keydown', function(e) {
+    // Escape closes every open window and the start menu
+    document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape') {
-            // close open windows
             document.querySelectorAll('.window').forEach(win => {
                 if (win.style.display === 'block') closeWindow(win.id);
             });
-            // close start menu
             const menu = document.getElementById('startMenu');
             if (menu) menu.style.display = 'none';
         }
     });
 }
 
-/* Initialize once DOM loaded */
-window.addEventListener('DOMContentLoaded', () => {
+/* ==========================================================
+   12. Boot
+   ========================================================== */
+document.addEventListener('DOMContentLoaded', () => {
+    setupMusicPlayer();
     addKeyboardSupport();
+
+    // best-effort autoplay of the first track
+    setTimeout(attemptAutoPlay, 100);
 });
